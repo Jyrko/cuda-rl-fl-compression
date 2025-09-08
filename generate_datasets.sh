@@ -12,12 +12,116 @@ python3 -c "
 import random
 import numpy as np
 import os
+from PIL import Image
+import math
 
 print('Generating test datasets...')
+print('Installing PIL if needed...')
+
+# Try to install Pillow if not available
+try:
+    from PIL import Image
+except ImportError:
+    print('Installing Pillow for image generation...')
+    import subprocess
+    subprocess.check_call(['pip3', 'install', 'Pillow'])
+    from PIL import Image
 
 # Ensure reproducible results
 random.seed(42)
 np.random.seed(42)
+
+# Function to save data as both binary and image formats
+def save_dataset_with_image(data, name, size, description):
+    # Save binary file for compression testing
+    filename_bin = f'input/{name}_{size}.bin'
+    with open(filename_bin, 'wb') as f:
+        f.write(bytes(data))
+    
+    # Create image visualization for gradient and pattern data
+    if any(pattern in name for pattern in ['gradient', 'sparse', 'repetitive', 'binary_pattern', 'mixed_pattern']):
+        try:
+            # Calculate image dimensions (try to make roughly square)
+            total_pixels = len(data)
+            width = int(math.sqrt(total_pixels))
+            height = (total_pixels + width - 1) // width  # Ceiling division
+            
+            # Pad data if necessary to fill rectangle
+            padded_data = data + [0] * (width * height - len(data))
+            
+            # Convert to numpy array and reshape
+            img_array = np.array(padded_data[:width * height], dtype=np.uint8)
+            img_array = img_array.reshape((height, width))
+            
+            # Scale values to full 0-255 range for better visibility
+            if img_array.max() > 0:
+                img_array = (img_array.astype(float) / img_array.max() * 255).astype(np.uint8)
+            
+            # Create and save image
+            img = Image.fromarray(img_array, mode='L')  # Grayscale
+            img_filename = f'input/{name}_{size}.png'
+            img.save(img_filename)
+            
+            print(f'    Created {filename_bin} ({len(data):,} bytes) + {img_filename} ({width}x{height})')
+            
+        except Exception as e:
+            print(f'    Created {filename_bin} ({len(data):,} bytes) - Image generation failed: {e}')
+    else:
+        print(f'    Created {filename_bin} ({len(data):,} bytes)')
+
+# Function to create a simple bitmap manually (fallback if PIL fails)
+def create_simple_bitmap(data, filename, width, height):
+    # Simple BMP header for grayscale image
+    file_size = 54 + width * height  # Header + pixel data
+    
+    # BMP file header (14 bytes)
+    bmp_header = bytearray([
+        0x42, 0x4D,  # 'BM'
+        file_size & 0xFF, (file_size >> 8) & 0xFF, (file_size >> 16) & 0xFF, (file_size >> 24) & 0xFF,  # File size
+        0x00, 0x00, 0x00, 0x00,  # Reserved
+        0x36, 0x00, 0x00, 0x00   # Pixel data offset
+    ])
+    
+    # BMP info header (40 bytes)
+    info_header = bytearray([
+        0x28, 0x00, 0x00, 0x00,  # Header size
+        width & 0xFF, (width >> 8) & 0xFF, (width >> 16) & 0xFF, (width >> 24) & 0xFF,  # Width
+        height & 0xFF, (height >> 8) & 0xFF, (height >> 16) & 0xFF, (height >> 24) & 0xFF,  # Height
+        0x01, 0x00,  # Planes
+        0x08, 0x00,  # Bits per pixel
+        0x00, 0x00, 0x00, 0x00,  # Compression
+        0x00, 0x00, 0x00, 0x00,  # Image size
+        0x00, 0x00, 0x00, 0x00,  # X pixels per meter
+        0x00, 0x00, 0x00, 0x00,  # Y pixels per meter
+        0x00, 0x01, 0x00, 0x00,  # Colors used
+        0x00, 0x00, 0x00, 0x00   # Important colors
+    ])
+    
+    # Color palette (256 grayscale colors)
+    palette = bytearray()
+    for i in range(256):
+        palette.extend([i, i, i, 0])  # B, G, R, A
+    
+    # Pixel data (bottom-up)
+    pixel_data = bytearray()
+    padded_data = data + [0] * (width * height - len(data))
+    
+    for y in range(height-1, -1, -1):  # BMP is bottom-up
+        for x in range(width):
+            pixel_index = y * width + x
+            if pixel_index < len(padded_data):
+                # Scale to 0-255 range
+                value = min(255, max(0, int(padded_data[pixel_index] * 255 / max(1, max(padded_data)))))
+                pixel_data.append(value)
+            else:
+                pixel_data.append(0)
+    
+    # Write BMP file
+    with open(filename, 'wb') as f:
+        f.write(bmp_header)
+        f.write(info_header)
+        f.write(palette)
+        f.write(pixel_data)
 
 # Test data characteristics and sizes
 test_cases = [
@@ -108,14 +212,10 @@ for name, desc, generator, sizes in test_cases:
         if 'sparse' in name:
             random.shuffle(data)
         
-        filename = f'input/{name}_{size}.bin'
-        with open(filename, 'wb') as f:
-            f.write(bytes(data))
-        
         file_size = len(data)
         total_files += 1
         total_size += file_size
-        print(f'    Created {filename} ({file_size:,} bytes)')
+        save_dataset_with_image(data, name, size, desc)
 
 print()
 print('Creating performance test datasets:')
@@ -124,14 +224,10 @@ for name, desc, generator, sizes in performance_cases:
     for size in sizes:
         data = generator(size)
         
-        filename = f'input/{name}_{size}.bin'
-        with open(filename, 'wb') as f:
-            f.write(bytes(data))
-        
         file_size = len(data)
         total_files += 1
         total_size += file_size
-        print(f'    Created {filename} ({file_size:,} bytes)')
+        save_dataset_with_image(data, name, size, desc)
 
 print()
 print('Creating special test cases:')

@@ -115,6 +115,45 @@ int warp_runs = popc(start_mask);
 - Natural photographs
 - Compressed audio/video
 
+## Dataset Generation
+
+Generate comprehensive test datasets with visual previews:
+
+```bash
+./generate_datasets.sh
+```
+
+This creates:
+- **Binary files (.bin)**: For actual compression testing
+- **PNG images (.png)**: Visual previews of gradient, pattern, and sparse data
+- 54 test files totaling ~16MB covering various data characteristics
+
+Dataset types include:
+- **Gradient data**: 4-bit, 6-bit, 8-bit gradients (excellent for Fixed-Length)
+- **Repetitive data**: High and medium repetition (optimal for RLE)  
+- **Sparse data**: Mostly zeros with scattered values
+- **Random data**: Worst-case scenarios for both algorithms
+- **Performance data**: Large datasets for speed testing
+- **Special cases**: Simulated real-world data (medical, network, etc.)
+
+**Preview Images**: Open the PNG files to visually inspect data patterns before compression testing.
+
+### Viewing Generated Images
+
+The generated PNG files show the data visually:
+- **Gradient images**: Show smooth transitions and bit-depth patterns
+- **Repetitive images**: Display clear patterns and runs
+- **Sparse images**: Show distribution of non-zero values
+- **Binary patterns**: Visualize 0/1 distributions
+
+Example files to preview:
+```bash
+open input/gradient_4bit_10000.png     # 4-bit gradient pattern
+open input/repetitive_high_10000.png   # High repetition pattern
+open input/sparse_3bit_10000.png       # Sparse data visualization
+open input/binary_pattern_10000.png    # Binary pattern
+```
+
 ## Compilation and Usage
 
 ### C++ Versions
