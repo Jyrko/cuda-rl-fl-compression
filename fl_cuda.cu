@@ -97,14 +97,13 @@ __global__ void findRequiredBitsKernel(const unsigned char* input, int* bits_req
     }
 }
 
-// Advanced bit packing kernel with warp-level cooperation
+// Simple sequential bit packing kernel 
 __global__ void packBitsKernel(const unsigned char* input, unsigned char* output,
                               const int* bits_required, const int* output_offsets,
                               int total_size, int frame_size) {
     int frame_idx = blockIdx.x;
-    int tid = threadIdx.x;
-    int lane_id = tid % WARP_SIZE;
-    int warp_id = tid / WARP_SIZE;
+    
+    if (threadIdx.x != 0) return; // Only use one thread per block for simplicity
     
     int start_pos = frame_idx * frame_size;
     int end_pos = min(start_pos + frame_size, total_size);
@@ -115,49 +114,27 @@ __global__ void packBitsKernel(const unsigned char* input, unsigned char* output
     int bits_per_value = bits_required[frame_idx];
     int output_offset = output_offsets[frame_idx];
     
-    __shared__ unsigned char shared_output[BLOCK_SIZE * 8 / 8]; // Shared memory for bit packing
-    __shared__ int bit_position;
-    
-    if (tid == 0) {
-        bit_position = 0;
+    // Initialize output bytes to zero
+    int packed_bytes = (frame_elements * bits_per_value + 7) / 8;
+    for (int i = 0; i < packed_bytes; i++) {
+        output[output_offset + i] = 0;
     }
-    __syncthreads();
     
-    // Process elements in parallel
-    for (int i = tid; i < frame_elements; i += blockDim.x) {
+    // Pack bits sequentially
+    int current_bit = 0;
+    for (int i = 0; i < frame_elements; i++) {
         unsigned char value = input[start_pos + i] & ((1 << bits_per_value) - 1);
         
-        // Atomically get bit position and advance
-        int my_bit_pos = atomicAdd(&bit_position, bits_per_value);
-        
-        // Pack bits into shared memory
         for (int bit = 0; bit < bits_per_value; bit++) {
-            int global_bit_pos = my_bit_pos + bit;
-            int byte_idx = global_bit_pos / 8;
-            int bit_idx = global_bit_pos % 8;
+            int byte_idx = current_bit / 8;
+            int bit_idx = current_bit % 8;
             
-            if (byte_idx < sizeof(shared_output)) {
-                unsigned char bit_val = (value >> (bits_per_value - 1 - bit)) & 1;
-                if (bit_val) {
-                    // Calculate which 32-bit word and bit position
-                    int word_idx = byte_idx / 4;
-                    int byte_in_word = byte_idx % 4;
-                    int bit_in_word = byte_in_word * 8 + (7 - bit_idx);
-                    
-                    // Cast to unsigned int pointer and use atomic operation
-                    unsigned int* word_ptr = reinterpret_cast<unsigned int*>(shared_output);
-                    atomicOr(&word_ptr[word_idx], 1U << bit_in_word);
-                }
+            unsigned char bit_val = (value >> (bits_per_value - 1 - bit)) & 1;
+            if (bit_val) {
+                output[output_offset + byte_idx] |= (1 << (7 - bit_idx));
             }
+            current_bit++;
         }
-    }
-    
-    __syncthreads();
-    
-    // Copy packed data to global memory
-    int packed_bytes = (frame_elements * bits_per_value + 7) / 8;
-    for (int i = tid; i < packed_bytes; i += blockDim.x) {
-        output[output_offset + i] = shared_output[i];
     }
 }
 
@@ -186,8 +163,9 @@ __global__ void unpackBitsKernel(const unsigned char* packed_data, unsigned char
             int byte_idx = global_bit_pos / 8;
             int bit_idx = global_bit_pos % 8;
             
+            // Fix: Use correct bit indexing (MSB first)
             unsigned char bit_val = (packed_data[input_offset + byte_idx] >> (7 - bit_idx)) & 1;
-            value |= bit_val << (bits_per_value - 1 - bit);
+            value = (value << 1) | bit_val;  // Build value MSB first
         }
         
         output[output_offset + i] = value;
