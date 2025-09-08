@@ -983,7 +983,7 @@ _deps
 *.app
 
 # C/C++ binary extension file
-*.bin
+# *.bin
 
 ##### C
 # Prerequisites

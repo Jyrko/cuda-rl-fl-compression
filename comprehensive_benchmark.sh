@@ -19,45 +19,38 @@ if [ ! -d "input" ] || [ -z "$(ls -A input/*.png 2>/dev/null)" ]; then
     fi
 fi
 
+# Compile programs
+echo "Compiling compression programs..."
+g++ -O3 fl_compression.cpp -o fl_compression 2>/dev/null && echo "✓ FL C++ compiled" || echo "✗ FL C++ compilation failed"
+g++ -O3 rle_compression.cpp -o rle_compression 2>/dev/null && echo "✓ RLE C++ compiled" || echo "✗ RLE C++ compilation failed"
+
 # Check if CUDA is available
 CUDA_AVAILABLE=false
 if command -v nvcc &> /dev/null; then
     echo "CUDA detected - compiling CUDA versions..."
-    nvcc -O3 fl_cuda.cu -o fl_cuda 2>/dev/null && echo "✓ FL CUDA compiled"
-    nvcc -O3 rle_cuda.cu -o rle_cuda 2>/dev/null && echo "✓ RLE CUDA compiled"
+    nvcc -O3 fl_cuda.cu -o fl_cuda 2>/dev/null && echo "✓ FL CUDA compiled" || echo "✗ FL CUDA compilation failed"
+    nvcc -O3 rle_cuda.cu -o rle_cuda 2>/dev/null && echo "✓ RLE CUDA compiled" || echo "✗ RLE CUDA compilation failed"
     CUDA_AVAILABLE=true
 else
     echo "⚠ CUDA not available - testing C++ versions only"
 fi
 
 echo
-
-# Check if CUDA is available
-CUDA_AVAILABLE=false
-if command -v nvcc &> /dev/null; then
-    echo "CUDA detected - compiling CUDA versions..."
-    nvcc -O3 fl_cuda.cu -o fl_cuda 2>/dev/null && echo "✓ FL CUDA compiled"
-    nvcc -O3 rle_cuda.cu -o rle_cuda 2>/dev/null && echo "✓ RLE CUDA compiled"
-    CUDA_AVAILABLE=true
-else
-    echo "⚠ CUDA not available - testing C++ versions only"
-fi
-
-echo
-
-# Create comprehensive test data
 
 # Check if datasets exist, if not prompt user to generate them
-if [ ! -f "input/gradient_4bit_1000.png" ]; then
+if [ ! -f "input/gradient_4bit_1000.bin" ]; then
     echo "❌ Test datasets not found!"
     echo "Please generate datasets first by running:"
     echo "  ./generate_datasets.sh"
     echo
-    echo "This will create all required test files in the input/ directory."
+    echo "This will create all required test files in the input/ directory:"
+    echo "  • .bin files for compression testing"
+    echo "  • .png files for visual preview"
     exit 1
 fi
 
 echo "✅ Using pre-generated datasets from input/ directory"
+echo "ℹ  Compressing .bin files (raw data) - preview with .png files"
 
 echo "Test Datasets Ready"
 echo "==================="
@@ -81,34 +74,36 @@ run_compression_test() {
     # Handle cases where compression might fail or expand data
     if [ -z "$ratio" ]; then
         ratio="N/A"
+    fi
+    
+    if [ -z "$time" ]; then
         time="N/A"
+    fi
+    
+    if [ -z "$savings" ]; then
         savings="N/A"
     fi
     
-    echo "$algorithm,$ratio,$time,$savings"
+    echo "$ratio,$time,$savings"
 }
 
-# Test files - using pre-generated datasets
+# Test files - using pre-generated datasets (BIN files for compression, PNG for preview)
 test_files=(
-    "input/gradient_4bit_1000.png:4bit-1K"
-    "input/gradient_4bit_10000.png:4bit-10K"
-    "input/gradient_4bit_50000.png:4bit-50K"
-    "input/gradient_6bit_1000.png:6bit-1K"
-    "input/gradient_6bit_10000.png:6bit-10K"
-    "input/gradient_6bit_50000.png:6bit-50K"
-    "input/repetitive_high_1000.png:Rep-1K"
-    "input/repetitive_high_10000.png:Rep-10K"
-    "input/repetitive_high_50000.png:Rep-50K"
-    "input/sparse_3bit_1000.png:Sparse-1K"
-    "input/sparse_3bit_10000.png:Sparse-10K"
-    "input/sparse_3bit_50000.png:Sparse-50K"
-    "input/random_uniform_1000.png:Rand-1K"
-    "input/random_uniform_10000.png:Rand-10K"
-    "input/mixed_pattern_1000.png:Mixed-1K"
-    "input/mixed_pattern_10000.png:Mixed-10K"
-    "input/scientific_sensor_10000.png:Sensor-10K"
-    "input/text_like_10000.png:Text-10K"
-    "input/binary_pattern_10000.png:Binary-10K"
+    "input/gradient_4bit_1000.bin:4bit-1K"
+    "input/gradient_4bit_10000.bin:4bit-10K"
+    "input/gradient_4bit_50000.bin:4bit-50K"
+    "input/gradient_6bit_1000.bin:6bit-1K"
+    "input/gradient_6bit_10000.bin:6bit-10K"
+    "input/gradient_6bit_50000.bin:6bit-50K"
+    "input/repetitive_high_1000.bin:Rep-1K"
+    "input/repetitive_high_10000.bin:Rep-10K"
+    "input/repetitive_high_50000.bin:Rep-50K"
+    "input/sparse_3bit_1000.bin:Sparse-1K"
+    "input/sparse_3bit_10000.bin:Sparse-10K"
+    "input/sparse_3bit_50000.bin:Sparse-50K"
+    "input/mixed_pattern_1000.bin:Mixed-1K"
+    "input/mixed_pattern_10000.bin:Mixed-10K"
+    "input/binary_pattern_10000.bin:Binary-10K"
 )
 
 echo "| Dataset | FL-CPP | FL-Time | FL-Savings | RLE-CPP | RLE-Time | RLE-Savings |"
@@ -126,7 +121,7 @@ for entry in "${test_files[@]}"; do
         echo -n " $fl_ratio | $fl_time | $fl_savings% |"
         
         # Test RLE C++
-        rle_result=$(run_compression_test "./rle_compression -c" "$file" "RLE-CPP")
+        rle_result=$(run_compression_test "./rle_compression -c" "$file" "RLE-CPP")  
         IFS=',' read -r rle_ratio rle_time rle_savings <<< "$rle_result"
         echo " $rle_ratio | $rle_time | $rle_savings% |"
         
@@ -158,6 +153,7 @@ if [ "$CUDA_AVAILABLE" = true ]; then
         "input/perf_gradient_1000000.bin:Gradient-1M"
         "input/perf_repetitive_1000000.bin:Repetitive-1M"
         "input/perf_sparse_1000000.bin:Sparse-1M"
+        "input/perf_sparse_2000000.bin:Sparse-2M"
     )
     
     echo "| Dataset | Size | FL-CUDA Time | RLE-CUDA Time | Notes |"
