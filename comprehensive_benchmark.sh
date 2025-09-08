@@ -4,6 +4,34 @@ echo "=== Comprehensive Compression Algorithm Comparison ==="
 echo "Testing Fixed-Length (FL) and Run-Length Encoding (RLE) in both C++ and CUDA"
 echo
 
+# Check if datasets exist
+if [ ! -d "input" ] || [ -z "$(ls -A input/*.bin 2>/dev/null)" ]; then
+    echo "⚠ Test datasets not found!"
+    echo "Please run './generate_datasets.sh' first to create test datasets."
+    echo
+    read -p "Generate datasets now? (y/n): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        ./generate_datasets.sh
+    else
+        echo "Exiting. Run './generate_datasets.sh' to create datasets."
+        exit 1
+    fi
+fi
+
+# Check if CUDA is available
+CUDA_AVAILABLE=false
+if command -v nvcc &> /dev/null; then
+    echo "CUDA detected - compiling CUDA versions..."
+    nvcc -O3 fl_cuda.cu -o fl_cuda 2>/dev/null && echo "✓ FL CUDA compiled"
+    nvcc -O3 rle_cuda.cu -o rle_cuda 2>/dev/null && echo "✓ RLE CUDA compiled"
+    CUDA_AVAILABLE=true
+else
+    echo "⚠ CUDA not available - testing C++ versions only"
+fi
+
+echo
+
 # Check if CUDA is available
 CUDA_AVAILABLE=false
 if command -v nvcc &> /dev/null; then
@@ -18,36 +46,21 @@ fi
 echo
 
 # Create comprehensive test data
-python3 -c "
-import random
-import numpy as np
 
-# Test data with different characteristics
-test_cases = [
-    # (name, description, data_generator)
-    ('gradient_4bit', 'Gradient data (4 bits)', lambda size: [i % 16 for i in range(size)]),
-    ('gradient_6bit', 'Gradient data (6 bits)', lambda size: [i % 64 for i in range(size)]),
-    ('repetitive', 'Highly repetitive (RLE optimal)', lambda size: [i//50 % 20 for i in range(size)]),
-    ('sparse', 'Sparse data (mostly zeros)', lambda size: [0]*int(size*0.9) + [random.randint(1,7) for _ in range(int(size*0.1))]),
-    ('random', 'Random data (worst case)', lambda size: [random.randint(0, 255) for _ in range(size)]),
-    ('mixed_pattern', 'Mixed pattern data', lambda size: ([i%8 for i in range(size//2)] + [random.randint(0,255) for _ in range(size//2)])),
-]
+# Check if datasets exist, if not prompt user to generate them
+if [ ! -f "input/gradient_4bit_1000.bin" ]; then
+    echo "❌ Test datasets not found!"
+    echo "Please generate datasets first by running:"
+    echo "  ./generate_datasets.sh"
+    echo
+    echo "This will create all required test files in the input/ directory."
+    exit 1
+fi
 
-sizes = [1000, 10000, 50000]
+echo "✅ Using pre-generated datasets from input/ directory"
 
-for name, desc, generator in test_cases:
-    for size in sizes:
-        data = generator(size)
-        random.shuffle(data) if name == 'mixed_pattern' else None
-        filename = f'input/test_{name}_{size}.bin'
-        with open(filename, 'wb') as f:
-            f.write(bytes(data))
-
-print('Created comprehensive test dataset')
-"
-
-echo "Test Dataset Created"
-echo "===================="
+echo "Test Datasets Ready"
+echo "==================="
 echo
 
 # Function to run and time a compression command
@@ -75,24 +88,27 @@ run_compression_test() {
     echo "$algorithm,$ratio,$time,$savings"
 }
 
-# Test files
+# Test files - using pre-generated datasets
 test_files=(
-    "input/test_gradient_4bit_1000.bin:4bit-1K"
-    "input/test_gradient_4bit_10000.bin:4bit-10K"
-    "input/test_gradient_4bit_50000.bin:4bit-50K"
-    "input/test_gradient_6bit_1000.bin:6bit-1K"
-    "input/test_gradient_6bit_10000.bin:6bit-10K"
-    "input/test_gradient_6bit_50000.bin:6bit-50K"
-    "input/test_repetitive_1000.bin:Rep-1K"
-    "input/test_repetitive_10000.bin:Rep-10K"
-    "input/test_repetitive_50000.bin:Rep-50K"
-    "input/test_sparse_1000.bin:Sparse-1K"
-    "input/test_sparse_10000.bin:Sparse-10K"
-    "input/test_sparse_50000.bin:Sparse-50K"
-    "input/test_random_1000.bin:Rand-1K"
-    "input/test_random_10000.bin:Rand-10K"
-    "input/test_mixed_pattern_1000.bin:Mixed-1K"
-    "input/test_mixed_pattern_10000.bin:Mixed-10K"
+    "input/gradient_4bit_1000.bin:4bit-1K"
+    "input/gradient_4bit_10000.bin:4bit-10K"
+    "input/gradient_4bit_50000.bin:4bit-50K"
+    "input/gradient_6bit_1000.bin:6bit-1K"
+    "input/gradient_6bit_10000.bin:6bit-10K"
+    "input/gradient_6bit_50000.bin:6bit-50K"
+    "input/repetitive_high_1000.bin:Rep-1K"
+    "input/repetitive_high_10000.bin:Rep-10K"
+    "input/repetitive_high_50000.bin:Rep-50K"
+    "input/sparse_3bit_1000.bin:Sparse-1K"
+    "input/sparse_3bit_10000.bin:Sparse-10K"
+    "input/sparse_3bit_50000.bin:Sparse-50K"
+    "input/random_uniform_1000.bin:Rand-1K"
+    "input/random_uniform_10000.bin:Rand-10K"
+    "input/mixed_pattern_1000.bin:Mixed-1K"
+    "input/mixed_pattern_10000.bin:Mixed-10K"
+    "input/scientific_sensor_10000.bin:Sensor-10K"
+    "input/text_like_10000.bin:Text-10K"
+    "input/binary_pattern_10000.bin:Binary-10K"
 )
 
 echo "| Dataset | FL-CPP | FL-Time | FL-Savings | RLE-CPP | RLE-Time | RLE-Savings |"
@@ -136,57 +152,43 @@ if [ "$CUDA_AVAILABLE" = true ]; then
     echo "======================"
     
     # Test larger datasets for CUDA performance comparison
-    python3 -c "
-import random
-
-# Create larger test files for CUDA performance testing
-large_sizes = [100000, 500000, 1000000]
-
-for size in large_sizes:
-    # Gradient data (good for FL)
-    gradient = [i % 32 for i in range(size)]  # 5-bit data
-    with open(f'input/cuda_gradient_{size}.bin', 'wb') as f:
-        f.write(bytes(gradient))
+    echo "Using pre-generated performance datasets..."
     
-    # Repetitive data (good for RLE)
-    repetitive = []
-    for i in range(size // 100):
-        repetitive.extend([i % 20] * 100)
-    with open(f'input/cuda_repetitive_{size}.bin', 'wb') as f:
-        f.write(bytes(repetitive))
-
-print('Created CUDA performance test files')
-"
+    performance_files=(
+        "input/perf_gradient_1000000.bin:Gradient-1M"
+        "input/perf_repetitive_1000000.bin:Repetitive-1M"
+        "input/perf_sparse_1000000.bin:Sparse-1M"
+    )
     
-    echo "| Dataset | Size | FL-CUDA Time | RLE-CUDA Time | Speedup |"
-    echo "|---------|------|--------------|---------------|---------|"
+    echo "| Dataset | Size | FL-CUDA Time | RLE-CUDA Time | Notes |"
+    echo "|---------|------|--------------|---------------|-------|"
     
-    for size in 100000 500000 1000000; do
-        # Test FL CUDA vs CPP
-        if [ -f "input/cuda_gradient_${size}.bin" ]; then
-            echo -n "| Gradient | ${size} |"
+    for entry in "${performance_files[@]}"; do
+        IFS=':' read -r file label <<< "$entry"
+        
+        if [ -f "$file" ]; then
+            filesize=$(ls -l "$file" | awk '{print $5}')
+            echo -n "| $label | ${filesize} |"
             
             if [ -f "./fl_cuda" ]; then
-                fl_cuda_time=$(./fl_cuda "input/cuda_gradient_${size}.bin" 2>&1 | grep "completed in" | awk '{print $5}' | head -1)
+                fl_cuda_time=$(./fl_cuda "$file" 2>&1 | grep "completed in" | awk '{print $5}' | head -1)
                 echo -n " $fl_cuda_time μs |"
             else
                 echo -n " N/A |"
             fi
             
             if [ -f "./rle_cuda" ]; then
-                rle_cuda_time=$(./rle_cuda "input/cuda_repetitive_${size}.bin" 2>&1 | grep "completed in" | awk '{print $5}' | head -1)
+                rle_cuda_time=$(./rle_cuda "$file" 2>&1 | grep "completed in" | awk '{print $5}' | head -1)
                 echo -n " $rle_cuda_time μs |"
             else
                 echo -n " N/A |"
             fi
             
-            # Calculate theoretical speedup (simplified)
-            echo " TBD |"
+            echo " CUDA Performance |"
+        else
+            echo "| $label | Missing | N/A | N/A | Dataset not found |"
         fi
     done
-    
-    # Cleanup CUDA test files
-    rm -f input/cuda_*.bin 2>/dev/null
 else
     echo "CUDA Performance: Skipped (CUDA not available)"
 fi
