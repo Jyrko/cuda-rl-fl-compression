@@ -5,7 +5,7 @@ echo "Testing Fixed-Length (FL) and Run-Length Encoding (RLE) in both C++ and CU
 echo
 
 # Check if datasets exist
-if [ ! -d "input" ] || [ -z "$(ls -A input/*.bin 2>/dev/null)" ]; then
+if [ ! -d "input" ] || [ -z "$(ls -A input/*.png 2>/dev/null)" ]; then
     echo "⚠ Test datasets not found!"
     echo "Please run './generate_datasets.sh' first to create test datasets."
     echo
