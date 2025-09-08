@@ -28,9 +28,13 @@ struct CudaRLEResult {
     size_t compressed_size;
 };
 
-// Warp-level primitive functions
+// Warp-level primitive functions with backward compatibility
 __device__ __forceinline__ unsigned int ballot_sync(unsigned int mask, int predicate) {
+#if __CUDA_ARCH__ >= 700
     return __ballot_sync(mask, predicate);
+#else
+    return __ballot(predicate);
+#endif
 }
 
 __device__ __forceinline__ int popc(unsigned int x) {

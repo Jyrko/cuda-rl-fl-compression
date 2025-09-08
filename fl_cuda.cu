@@ -139,7 +139,14 @@ __global__ void packBitsKernel(const unsigned char* input, unsigned char* output
             if (byte_idx < sizeof(shared_output)) {
                 unsigned char bit_val = (value >> (bits_per_value - 1 - bit)) & 1;
                 if (bit_val) {
-                    atomicOr(&shared_output[byte_idx], 1 << (7 - bit_idx));
+                    // Calculate which 32-bit word and bit position
+                    int word_idx = byte_idx / 4;
+                    int byte_in_word = byte_idx % 4;
+                    int bit_in_word = byte_in_word * 8 + (7 - bit_idx);
+                    
+                    // Cast to unsigned int pointer and use atomic operation
+                    unsigned int* word_ptr = reinterpret_cast<unsigned int*>(shared_output);
+                    atomicOr(&word_ptr[word_idx], 1U << bit_in_word);
                 }
             }
         }

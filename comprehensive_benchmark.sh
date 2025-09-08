@@ -28,9 +28,20 @@ g++ -O3 rle_compression.cpp -o rle_compression 2>/dev/null && echo "✓ RLE C++ 
 CUDA_AVAILABLE=false
 if command -v nvcc &> /dev/null; then
     echo "CUDA detected - compiling CUDA versions..."
-    nvcc -O3 fl_cuda.cu -o fl_cuda 2>/dev/null && echo "✓ FL CUDA compiled" || echo "✗ FL CUDA compilation failed"
-    nvcc -O3 rle_cuda.cu -o rle_cuda 2>/dev/null && echo "✓ RLE CUDA compiled" || echo "✗ RLE CUDA compilation failed"
-    CUDA_AVAILABLE=true
+    
+    # Try different CUDA standards for compatibility
+    nvcc -O3 -std=c++11 fl_cuda.cu -o fl_cuda 2>/dev/null && echo "✓ FL CUDA compiled" || \
+    nvcc -O3 fl_cuda.cu -o fl_cuda 2>/dev/null && echo "✓ FL CUDA compiled (no std)" || \
+    echo "✗ FL CUDA compilation failed"
+    
+    nvcc -O3 -std=c++11 rle_cuda.cu -o rle_cuda 2>/dev/null && echo "✓ RLE CUDA compiled" || \
+    nvcc -O3 rle_cuda.cu -o rle_cuda 2>/dev/null && echo "✓ RLE CUDA compiled (no std)" || \
+    echo "✗ RLE CUDA compilation failed"
+    
+    # Check if at least one CUDA program compiled successfully
+    if [ -f "./fl_cuda" ] || [ -f "./rle_cuda" ]; then
+        CUDA_AVAILABLE=true
+    fi
 else
     echo "⚠ CUDA not available - testing C++ versions only"
 fi
@@ -38,19 +49,16 @@ fi
 echo
 
 # Check if datasets exist, if not prompt user to generate them
-if [ ! -f "input/gradient_4bit_1000.bin" ]; then
+if [ ! -f "input/gradient_4bit_1000.png" ]; then
     echo "❌ Test datasets not found!"
     echo "Please generate datasets first by running:"
     echo "  ./generate_datasets.sh"
     echo
-    echo "This will create all required test files in the input/ directory:"
-    echo "  • .bin files for compression testing"
-    echo "  • .png files for visual preview"
+    echo "This will create all required test files in the input/ directory."
     exit 1
 fi
 
 echo "✅ Using pre-generated datasets from input/ directory"
-echo "ℹ  Compressing .bin files (raw data) - preview with .png files"
 
 echo "Test Datasets Ready"
 echo "==================="
@@ -87,7 +95,7 @@ run_compression_test() {
     echo "$ratio,$time,$savings"
 }
 
-# Test files - using pre-generated datasets (BIN files for compression, PNG for preview)
+# Test files - using pre-generated datasets  
 test_files=(
     "input/gradient_4bit_1000.bin:4bit-1K"
     "input/gradient_4bit_10000.bin:4bit-10K"
