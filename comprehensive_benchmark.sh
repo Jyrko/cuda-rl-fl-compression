@@ -48,7 +48,7 @@ echo
 # Create comprehensive test data
 
 # Check if datasets exist, if not prompt user to generate them
-if [ ! -f "input/gradient_4bit_1000.bin" ]; then
+if [ ! -f "input/gradient_4bit_1000.png" ]; then
     echo "❌ Test datasets not found!"
     echo "Please generate datasets first by running:"
     echo "  ./generate_datasets.sh"
